@@ -13,7 +13,7 @@ from statsmodels.stats.anova import AnovaRM
 import researchpy as rp
 from numpy import log
 from scipy.stats import norm
-
+from password import database_password as DBpwd
 from math import exp, sqrt
 
 
@@ -34,7 +34,7 @@ import pybloqs.block.table_formatters as tf
 from IPython.core.display import display, HTML
 
 def getFromDatabase(query):
-    db2 = pymysql.connect(host="localhost", user="root", db="murphylab", password='password')
+    db2 = pymysql.connect(host="localhost", user="root", db="murphylab", password=DBpwd)
     cur2 = db2.cursor()
     try:
         cur2.execute(query)
@@ -161,6 +161,15 @@ def generateQuery(detailed):
                     FROM `headfix_trials_summary`
                     WHERE `Project_ID` = 4 AND Date(`Trial start`) >= "2018-08-21" AND `Fixation` = "fix"
                     GROUP BY `Day`,`Mouse`"""
+    elif detailed == "day_night_performance":   #see if performance is different during night and day
+        query = """SELECT s.`Day Performance`/s.`night performance`,s.`Mouse` FROM (SELECT t.`Mouse`, AVG(IF(t.`time` >= 7 and t.`time` <= 18,t.`ratio`,NULL)) AS `Day Performance`, AVG(IF(t.`time` < 7 OR t.`time` > 18,t.`ratio`,NULL)) AS `night performance` FROM (SELECT HOUR(`Trial start`) as `time`, `Mouse`, SUM(IF(`Notes`="GO=2",1,0))/count(*) AS `ratio` FROM `headfix_trials_summary` WHERE ((Date(`Trial start`) BETWEEN "2017-08-28" and "2017-10-12") OR 
+                    (Date(`Trial start`) BETWEEN "2018-02-20" and "2018-04-09") OR 
+                    (Date(`Trial start`) BETWEEN "2018-04-28" and "2018-06-01") OR 
+                    (Date(`Trial start`) BETWEEN "2018-08-08" and "2018-10-23") OR 
+                    (Date(`Trial start`) BETWEEN "2018-11-23" AND "2018-12-20")) AND `Fixation` = "fix" AND `Task` LIKE "%window"
+                    GROUP BY `Mouse`, `time`)t
+                    GROUP BY t.`Mouse`)s
+                    GROUP BY s.`Mouse`"""
     else:
         print("wrong command ")
     return query

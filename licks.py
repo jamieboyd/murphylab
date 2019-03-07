@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import pymysql
 import glob
 import seaborn as sns
+from password import database_password as DBpwd
 
 analize_licks = False
 
@@ -38,7 +39,7 @@ def generate_save_commands(table):
     return query, values
 def saveToDatabase(table):
     query, values = generate_save_commands(table)
-    db1 = pymysql.connect(host="localhost",user="root",db="murphylab",password='password')
+    db1 = pymysql.connect(host="localhost",user="root",db="murphylab",password=DBpwd)
     cur1 = db1.cursor()
     try:
         cur1.execute(query, values)
@@ -163,7 +164,7 @@ def interprete_licks(files):
 #????????????????????????????????get data from database and preprocessing functions???????????????????????????????????????????????????
 
 def getFromDatabase(query):
-    db2 = pymysql.connect(host="localhost", user="root", db="murphylab", password='password')
+    db2 = pymysql.connect(host="localhost", user="root", db="murphylab", password=DBpwd)
     cur2 = db2.cursor()
     try:
         cur2.execute(query) #, (GO,MOUSE)

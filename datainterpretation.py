@@ -9,6 +9,7 @@ from pandas import DataFrame, read_csv
 import matplotlib.pyplot as plt
 import pymysql
 import glob
+from password import database_password as DBpwd
 
 NOTES = ""
 PROJECT = 1
@@ -28,19 +29,19 @@ LICKWITHHOLD_TIME=0
 LED_ON = None
 LED_OFF = None
 VIDEO_NOTES = ""
-LICK_DURATION = 0 #Lick duration after stimulus
-REACTION_TIME = 0 #time till first lick after stimulus
-LICKS_TO_TRIGGER_REWARD = 0 #number of licks between stimulus and reward given
-REWARD_DELAY = 0 #time between a trial start and release of water in a trial
-LICKS_AFTER_REWARD = 0 # number of licks to drink water
-LICK_DURATION_AFTER_REWARD = 0 #time spent licking after reward
-REWARD = "NO" # indicator if reward was earned
+LICK_DURATION = 0                                             #Lick duration after stimulus
+REACTION_TIME = 0                                             #time till first lick after stimulus
+LICKS_TO_TRIGGER_REWARD = 0                                   #number of licks between stimulus and reward given
+REWARD_DELAY = 0                                              #time between a trial start and release of water in a trial
+LICKS_AFTER_REWARD = 0                                        # number of licks to drink water
+LICK_DURATION_AFTER_REWARD = 0                                #time spent licking after reward
+REWARD = "NO"                                                 # indicator if reward was earned
 LICKS_WHILE_HEADFIXED = 0
 LICKS_WITHIN_LICKWITHHOLD_TIME = None
 
-trial_in_session_counter=0 #counts up how many trials are done in a session, increases with every trial
-lick_counter_trials =0 # counts the number of licks in a trial, counts up during a the time frame of a trial
-last_lick_time=0 #timestamp of the last occuring lick
+trial_in_session_counter=0                                    #counts up how many trials are done in a session, increases with every trial
+lick_counter_trials =0                                        # counts the number of licks in a trial, counts up during a the time frame of a trial
+last_lick_time=0                                              #timestamp of the last occuring lick
 lick_time_start=0
 reaction_time_started = False
 reaction_time_start = 0
@@ -59,9 +60,12 @@ HEADFIX_DURATION_ENTRIES = 0
 LICKS = 0
 LAST_MOUSE = "zero"
 LAST_MOUSE_TIME = 0
+LAST_MOUSE_HEADFIX = None
+LAST_MOUSE_TIME_HEADFIX = 0
 lick_counter_entries =0
 started = False
 last_mouse_time_start = 0
+last_mouse_time_headfix_start = 0
 headfix_start = 0
 
 water_available = False
@@ -98,9 +102,9 @@ def generate_commands(table):
     elif table == "entries":
         query = """INSERT INTO `entries`
                 (`Project_ID`, `Mouse`, `Timestamp`, `Duration`,`Trial or Entry`, `Headfix duration`, `Licks`,`Licks_while_headfixed`,
-                `Last Mouse`,`Time after last Mouse exits`)
-                    VALUES(%s,%s,FROM_UNIXTIME(%s),%s,%s,%s,%s,%s,%s,%s)"""
-        values = (PROJECT, TAG, ENTRY_TIME, ENTRY_DURATION, ENTRY_TYPE, HEADFIX_DURATION_ENTRIES, LICKS,LICKS_WHILE_HEADFIXED, LAST_MOUSE, LAST_MOUSE_TIME)
+                `Last Mouse`,`Time after last Mouse exits`,`Last mouse headfixed`,`Time since last headfix`)
+                    VALUES(%s,%s,FROM_UNIXTIME(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+        values = (PROJECT, TAG, ENTRY_TIME, ENTRY_DURATION, ENTRY_TYPE, HEADFIX_DURATION_ENTRIES, LICKS,LICKS_WHILE_HEADFIXED, LAST_MOUSE, LAST_MOUSE_TIME,LAST_MOUSE_HEADFIX,LAST_MOUSE_TIME_HEADFIX)
     elif table == "rewards":
         query = """INSERT INTO `Rewards`
                 (`Mouse`,`Timestamp`,`Reward_type`,`Related_trial`,`Related_entry`)
@@ -117,7 +121,7 @@ def generate_commands(table):
 
 def saveToDatabase(table):
     query, values = generate_commands(table)
-    db1 = pymysql.connect(host="localhost",user="root",db="murphylab",password='password')
+    db1 = pymysql.connect(host="localhost",user="root",db="murphylab",password=DBpwd)
     cur1 = db1.cursor()
     try:
         cur1.execute(query, values)
@@ -269,10 +273,13 @@ def clear_variables(variableset,unix):
     #entry related globals
     global lick_counter_entries
     global LAST_MOUSE
+    global LAST_MOUSE_HEADFIX
     global started
     global HEADFIX_DURATION_ENTRIES
     global last_mouse_time_start
+    global last_mouse_time_headfix_start
     global LAST_MOUSE_TIME
+    global LAST_MOUSE_TIME_HEADFIX
     global headfix_start
     global water_available
     global lick_counter_headfix
@@ -295,6 +302,10 @@ def clear_variables(variableset,unix):
         headfix_start = 0
         lick_counter_entries = 0
         LAST_MOUSE = TAG
+        if ENTRY_TYPE == "fix" or ENTRY_TYPE == "nofix":
+            LAST_MOUSE_HEADFIX = TAG
+            LAST_MOUSE_TIME_HEADFIX = 0
+            last_mouse_time_headfix_start = unix
         started = False
         HEADFIX_DURATION_ENTRIES = None
         LAST_MOUSE_TIME = 0
@@ -323,7 +334,7 @@ def standardize_trial_event_string(event_string):
 
 allfiles = glob.glob('D:/Cagedata/textfiles/Group6_textFiles/todo/*.txt')
 #allfiles = glob.glob('D:/Cagedata/textfiles/Group[1-6]_textFiles/*.txt')
-#allfiles = glob.glob('D:/Cagedata/textfiles/Group6_textFiles/*.txt')
+#allfiles = glob.glob('D:/Cagedata/textfiles/Group1_textFiles/headFix_2_20170717.txt')
 print(allfiles)
 for f in allfiles:
     df = pd.read_csv(f, sep="\t",header=None, names = ["Tag", "Unix", "Event", "Date"])
@@ -352,14 +363,28 @@ for f in allfiles:
             if "Buzz" in event:
                 event = standardize_trial_event_string(event)                 #deal with old textfiles
             if event == "entry":
+                had_session = False                                           #indicates that mouse had no session yet. important for detection of double sessions
                 ENTRY_TIME = unix                                             #catches time when the mouse enters
                 started = True                                                #boolean to prevent irritation for the rest of the program if an entry is missing
                 ENTRY_TYPE = "entry"                                          #type will be overwritten when headfixing attempt occurs
                 if last_mouse_time_start != 0:                                #condition prevents weird things after restarts
-                    LAST_MOUSE_TIME = unix - last_mouse_time_start            #calculate how long it has been since the last mouse entered the chamber
+                    LAST_MOUSE_TIME = unix - last_mouse_time_start            #calculate how long it has been since the last mouse left the chamber
+                if last_mouse_time_headfix_start != 0:                        #calculate how long it has been since the last mouse left the chamber after a headfix session (including no fix trials)
+                    LAST_MOUSE_TIME_HEADFIX = unix - last_mouse_time_headfix_start
             if event == "entryReward":
                 water_available = True
             if event == "check No Fix Trial" or event == "check+":            #start of headfixation
+                if had_session == True:                                       #condition indicates a double trial without leaving. simulating new entry for documentation
+                    ENTRY_DURATION = unix - ENTRY_TIME
+                    LICKS = lick_counter_entries
+                    saveToDatabase("entries")
+                    clear_variables("entries", unix)
+                    ENTRY_TIME = unix
+                    started = True
+                    if last_mouse_time_start != 0:
+                        LAST_MOUSE_TIME = unix - last_mouse_time_start
+                    if last_mouse_time_headfix_start != 0:
+                        LAST_MOUSE_TIME_HEADFIX = unix - last_mouse_time_headfix_start
                 trial_in_session_counter = 0                                  #tracks the number of trials in a session
                 SESSION_START = unix                                          #time when the mouse get's headfixed
                 previous_outcome = -2                                         #initializes this variable . prevents program error during first trial in session. will be overwritten when second trial is in line
@@ -372,7 +397,7 @@ for f in allfiles:
                     FIXATION = "no fix"
                     ENTRY_TYPE = "nofix"                                      #overwrite type from entry to no fix
                     HEADFIX_DURATION_ENTRIES = None                           #this varaiable is the complete headfix duration of the session and is stored in the entries table. differs from HEADFIX_DURATION which is the time how long the mouse is fixed at this moment
-            if event == "check-":
+            if event == "check-" and ENTRY_TYPE == "entry":
                 ENTRY_TYPE = "away"                                           #overwrite type from entry to symbolyze that the mouse fled when it heard the motor
                 HEADFIX_DURATION_ENTRIES = None
             if event == "BrainLEDON":
@@ -450,6 +475,7 @@ for f in allfiles:
 
             # end of headfix and session
             if event == "complete":                                           #marks the time when the mouse gets released.
+                had_session = True                                            #marks if a mouse exited yet acfter a session. important to process double sessions
                 if headfix_start != 0:                                        #marks that a headfixation took place. headfix_start is 0 for no fix trials
                     HEADFIX_DURATION_ENTRIES = unix - headfix_start           #finalyze the variable for the DB and entries table. Displays how long the mouse was headfixed during this session
                     LICKS_WHILE_HEADFIXED = lick_counter_headfix              #finalyze the lick counts while headfixed
@@ -470,8 +496,10 @@ for f in allfiles:
                 LICKS = lick_counter_entries                                  #finalyze count of licks while in chamber - entries table
                 saveToDatabase("entries")                                     #save the information of the entry
                 clear_variables("entries",unix)                               #reset variables related with the entries table
+                had_session = False                                           #marker boolean to detect double sessions, will be used when checking bean break (check+-, check no fix) look 100 lines earlier
             if event == "exit" and started == False:
                 clear_variables("entries",unix)
+                had_session = False
 
 
     print("done")
