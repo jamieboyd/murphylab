@@ -2,6 +2,7 @@
 import pandas as pd
 import pymysql
 import glob
+from password import database_password as DBpwd
 
 project = 1
 notes = ""
@@ -14,7 +15,7 @@ def generate_commands():
     return query, values
 
 def saveToDatabase(query, values):
-    db1 = pymysql.connect(host="localhost",user="root",db="murphylab",password='password')
+    db1 = pymysql.connect(host="localhost",user="root",db="murphylab",password=DBpwd)
     cur1 = db1.cursor()
     try:
         cur1.execute(query, values)

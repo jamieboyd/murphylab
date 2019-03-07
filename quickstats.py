@@ -7,6 +7,7 @@ import numpy as np
 from pandas import DataFrame, read_csv
 import matplotlib.pyplot as plt
 import pymysql
+from password import database_password as DBpwd
 import glob
 
 filteredtaglist = ["201608466", "201608468", "201608481", "201609136", "201609336", "210608298", "2016080026",
@@ -20,15 +21,15 @@ filteredtaglist = ["201608466", "201608468", "201608481", "201609136", "20160933
 
 def generate_commands(condition):
     if condition == "no":
-        query = """SELECT Date(`Timestamp`),`Mouse`, COUNT(*) FROM `rewards` WHERE Date(`Timestamp`) >= CURRENT_DATE -1 
+        query = """SELECT Date(`Timestamp`),`Mouse`, COUNT(*) FROM `rewards` WHERE `Timestamp` >= (Date(NOW()) - 2) 
                     Group BY Date(`Timestamp`),`Mouse`"""
     elif condition == "yes":
-        query = """SELECT Date(`Timestamp`),`Mouse`,`Reward_type`, COUNT(*) FROM `rewards` WHERE Date(`Timestamp`) >= CURRENT_DATE -3 
+        query = """SELECT Date(`Timestamp`),`Mouse`,`Reward_type`, COUNT(*) FROM `rewards` WHERE `Timestamp` >= (Date(NOW()) - INTERVAL 8 HOUR)  
                             Group BY Date(`Timestamp`),`Mouse`,`Reward_type`"""
     return query
 
 def getFromDatabase(query):
-    db2 = pymysql.connect(host="localhost", user="root", db="murphylab", password='password')
+    db2 = pymysql.connect(host="localhost", user="root", db="murphylab", password=DBpwd)
     cur2 = db2.cursor()
     try:
         cur2.execute(query)

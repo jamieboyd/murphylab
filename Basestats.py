@@ -1,6 +1,6 @@
 import pandas as pd
 import pymysql
-
+from password import database_password as DBpwd
 
 filteredtaglist=["201608466","201608468","201608481","201609136","201609336","210608298","2016080026",
                  "2016090793","2016090943",
@@ -28,9 +28,9 @@ def generateQuery(table):
                 ROUND(SUM(`Minutes headfixed`)/60,1) AS `Total hours headfixed`, SUM(`counts`) AS `Total headfixes`,
                 ROUND(AVG(`counts`),1) AS `Headfixes/day`,ROUND(STDDEV_SAMP(`counts`),1) AS `STD Headfixes/day`,
                 ROUND(AVG(`Minutes headfixed`),1) AS `Minutes headfixed/day`, ROUND(STDDEV_SAMP(`Minutes headfixed`),1) AS `STD Minutes headfixed/day`,
-                `Reason_for_retirement` FROM
+                `Reason_for_retirement`,`Genotype` FROM
                 (SELECT `mice_autoheadfix`.`cage`, `mice_autoheadfix`.`Mouse`, Date(`entries`.`Timestamp`) AS `Day`, (SUM(`Headfix duration`)/60) AS `Minutes headfixed`,
-                SUM(IF(`Trial or Entry` = "fix" ,1,NULL)) AS `counts`, `mice_autoheadfix`.`Reason_for_retirement`
+                SUM(IF(`Trial or Entry` = "fix" ,1,NULL)) AS `counts`, `mice_autoheadfix`.`Reason_for_retirement`,`mice_autoheadfix`.`Genotype`
                 FROM `entries`
                 LEFT JOIN `mice_autoheadfix` ON `entries`.`Mouse` = `mice_autoheadfix`.`Mouse`
                 WHERE
@@ -60,10 +60,27 @@ def generateQuery(table):
                 GROUP BY `Day`,`Mouse`)a
                 GROUP BY a.`Mouse`
                 ORDER BY `cage`,`Mouse`"""
+    elif table == "trials":    #lists success rate of each day. can be further processed in excel or whatever
+        query = """
+        SELECT `mice_autoheadfix`.`cage`, `mice_autoheadfix`.`Mouse`, Date(`headfix_trials_summary`.`Trial start`) AS `Day`,
+                SUM(if(`headfix_trials_summary`.`Notes`="GO=2",1,0)) AS `success`,
+                count(*) AS `all`, SUM(if(`headfix_trials_summary`.`Notes`="GO=2",1,0))/count(*)*100 AS `ratio`
+                FROM `headfix_trials_summary`
+                LEFT JOIN `mice_autoheadfix` ON `headfix_trials_summary`.`Mouse` = `mice_autoheadfix`.`Mouse`
+                WHERE
+                ((Date(`headfix_trials_summary`.`Trial start`) BETWEEN "2017-08-23" AND "2017-10-12")
+                OR (Date(`headfix_trials_summary`.`Trial start`) BETWEEN "2018-02-19" and "2018-04-01")
+                OR (Date(`headfix_trials_summary`.`Trial start`) BETWEEN "2018-04-28" AND "2018-06-01")
+                OR (Date(`headfix_trials_summary`.`Trial start`) BETWEEN "2018-08-08" and "2018-10-24")
+                OR (Date(`headfix_trials_summary`.`Trial start`) BETWEEN "2018-11-23" AND "2018-12-20"))
+                AND `mice_autoheadfix`.`Activity` = "good" and `headfix_trials_summary`.`Fixation` = "fix"
+                AND `headfix_trials_summary`.`Task` LIKE "%window"
+                GROUP BY `Day`,`Mouse`
+                GROUP BY `Mouse`,`Day`"""
     return query
 
 def getFromDatabase(query):
-    db2 = pymysql.connect(host="localhost", user="root", db="murphylab", password='password')
+    db2 = pymysql.connect(host="localhost", user="root", db="murphylab", password=DBpwd)
     cur2 = db2.cursor()
     try:
         cur2.execute(query)
@@ -98,7 +115,7 @@ def clean_table(df):
     df = df.drop(labels="Date", axis=1)
     return df
 
-stats = "headfixes"
+stats = "entries"
 
 
 data = list(getFromDatabase(query = generateQuery(stats)))
@@ -106,9 +123,9 @@ if stats == "headfixes":
     df = pd.DataFrame(data=data,
                       columns=["Mouse","Group","Days in cage", "Days with headfixation", "Total hours headfixed", "Total headfixes",
                                "Headfixes/day","STD Headfixes/day","Minutes headfixed / day","STD Minutes headfixed/day",
-                               "Reason for retirement"])
+                               "Reason for retirement","Genotype"])
 elif stats == "entries":
     df = pd.DataFrame(data=data,
-                      columns=["Group","Mouse", "Days in cage", "Minutes in chamber/Day", "Entries/Day","STD Entries/Day"])
+                      columns=["Group","Mouse", "Days in cage", "Minutes in chamber/Day","STD Minutes in chamber/Day", "Entries/Day","STD Entries/Day"])
 print(df)
 df.to_csv("summarystatsloose{}.csv".format(stats))
